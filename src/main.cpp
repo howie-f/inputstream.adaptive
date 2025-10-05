@@ -79,7 +79,10 @@ bool CInputStreamAdaptive::GetStreamIds(std::vector<unsigned int>& ids)
         INPUTSTREAM_MAX_STREAM_COUNT, streamCount - INPUTSTREAM_MAX_STREAM_COUNT);
   }
 
-  for (unsigned int i(0); i < INPUTSTREAM_MAX_STREAM_COUNT && i < streamCount; ++i)
+  const int period_id = m_session->GetPeriodId();
+
+  for (unsigned int i(1); i <= INPUTSTREAM_MAX_STREAM_COUNT && i <= streamCount;
+       ++i)
   {
     CStream* stream = m_session->GetStream(i);
     if (!stream)
@@ -99,7 +102,9 @@ bool CInputStreamAdaptive::GetStreamIds(std::vector<unsigned int>& ids)
           continue;
       }
 
-      ids.emplace_back(m_session->GetStreamIdFromIndex(i));
+      const unsigned int streamId = i + period_id * 1000;
+
+      ids.emplace_back(streamId);
     }
   }
 
@@ -143,9 +148,9 @@ bool CInputStreamAdaptive::GetStream(int streamid, kodi::addon::InputstreamInfo&
 
 void CInputStreamAdaptive::UnlinkIncludedStreams(CStream* stream)
 {
-  if (stream->m_mainStreamIndex)
+  if (stream->m_mainId)
   {
-    CStream* mainStream(m_session->GetStream(stream->m_mainStreamIndex));
+    CStream* mainStream(m_session->GetStream(stream->m_mainId));
     if (mainStream->GetReader())
       mainStream->GetReader()->RemoveStreamType(stream->m_info.GetStreamType());
   }
@@ -163,7 +168,7 @@ void CInputStreamAdaptive::EnableStream(int streamid, bool enable)
   if (!m_session)
     return;
 
-  CStream* stream{m_session->GetStream(m_session->GetStreamIndexFromId(streamid))};
+  CStream* stream(m_session->GetStream(streamid - m_session->GetPeriodId() * 1000));
 
   if (!enable && stream && stream->m_isEnabled)
   {
@@ -189,7 +194,7 @@ bool CInputStreamAdaptive::OpenStream(int streamid)
   if (!m_session)
     return false;
 
-  CStream* stream(m_session->GetStream(m_session->GetStreamIndexFromId(streamid)));
+  CStream* stream(m_session->GetStream(streamid - m_session->GetPeriodId() * 1000));
 
   if (!stream)
     return false;
@@ -224,8 +229,8 @@ bool CInputStreamAdaptive::OpenStream(int streamid)
   if (rep->IsIncludedStream())
   {
     CStream* mainStream;
-    stream->m_mainStreamIndex = 0;
-    while ((mainStream = m_session->GetStream(++stream->m_mainStreamIndex)))
+    stream->m_mainId = 0;
+    while ((mainStream = m_session->GetStream(++stream->m_mainId)))
       if (mainStream->m_info.GetStreamType() == INPUTSTREAM_TYPE_VIDEO && mainStream->m_isEnabled)
         break;
     if (mainStream)
@@ -243,7 +248,7 @@ bool CInputStreamAdaptive::OpenStream(int streamid)
     }
     else
     {
-      stream->m_mainStreamIndex = 0;
+      stream->m_mainId = 0;
     }
     m_IncludedStreams[stream->m_info.GetStreamType()] = streamid;
     return false;
@@ -263,12 +268,12 @@ bool CInputStreamAdaptive::OpenStream(int streamid)
     {
       stream->GetReader()->AddStreamType(streamType, id);
 
-      const unsigned int streamIndex = m_session->GetStreamIndexFromId(id);
+      unsigned int sid = id - m_session->GetPeriodId() * 1000;
 
-      CStream* incStream = m_session->GetStream(streamIndex);
+      CStream* incStream = m_session->GetStream(sid);
       if (!incStream)
       {
-        LOG::LogF(LOGERROR, "Cannot get the stream from stream index %u", streamIndex);
+        LOG::LogF(LOGERROR, "Cannot get the stream from sid %u", sid);
       }
       else
       {
@@ -377,13 +382,9 @@ DEMUX_PACKET* CInputStreamAdaptive::DemuxRead(void)
   {
     // Switched to new period / chapter
     m_lastPts = PLAYLIST::NO_PTS_VALUE;
-    // Disable streams from the old period (kodi core never close/disable streams...)
-    for (unsigned int i(0); i < INPUTSTREAM_MAX_STREAM_COUNT && i < m_session->GetStreamCount();
-         ++i)
-    {
-      EnableStream(m_session->GetStreamIdFromIndex(i), false);
-    }
-    // Initialize the new period
+    for (unsigned int i(1);
+         i <= INPUTSTREAM_MAX_STREAM_COUNT && i <= m_session->GetStreamCount(); ++i)
+      EnableStream(i + m_session->GetPeriodId() * 1000, false);
     m_session->InitializePeriod();
     DEMUX_PACKET* p = AllocateDemuxPacket(0);
     p->iStreamId = DEMUX_SPECIALID_STREAMCHANGE;

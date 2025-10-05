@@ -701,11 +701,6 @@ bool SESSION::CSession::PrepareStream(CStream* stream, uint64_t startPts)
   return true;
 }
 
-CStream* SESSION::CSession::GetStream(unsigned int index) const
-{
-  return index < m_streams.size() ? m_streams[index].get() : nullptr;
-}
-
 void CSession::EnableStream(CStream* stream, bool enable)
 {
   if (enable)
@@ -1066,7 +1061,7 @@ bool SESSION::CSession::OnGetStream(int streamid, kodi::addon::InputstreamInfo& 
   }
   else
   {
-    CStream* stream = GetStream(GetStreamIndexFromId(streamid));
+    CStream* stream = GetStream(streamid - GetPeriodId() * 1000);
     if (!stream)
       return false;
 
@@ -1074,22 +1069,6 @@ bool SESSION::CSession::OnGetStream(int streamid, kodi::addon::InputstreamInfo& 
   }
 
   return true;
-}
-
-int SESSION::CSession::GetStreamIdFromIndex(int streamIndex) const
-{
-  // The stream ID is composed as:
-  // - the "thousands" part specifies the period/chapter (e.g. 1000 stand for period 1, 2000 for period 2, ...)
-  // - the remaining difference from above stand for the stream index
-
-  // Since the index is base 0, we add +1 only to show in the log that stream IDs start from 1
-  // (for example 1001 instead of 1000) this is just to maintain consistency with older versions of ISA
-  return streamIndex + GetPeriodIndex() * 1000 + 1;
-}
-
-unsigned int SESSION::CSession::GetStreamIndexFromId(int streamId) const
-{
-  return streamId - GetPeriodIndex() * 1000 - 1;
 }
 
 uint32_t SESSION::CSession::GetIncludedStreamMask() const
@@ -1169,7 +1148,7 @@ uint64_t SESSION::CSession::GetChapterStartTime() const
   return start_time;
 }
 
-int SESSION::CSession::GetPeriodIndex() const
+int SESSION::CSession::GetPeriodId() const
 {
   if (!m_adaptiveTree)
     return -1;
